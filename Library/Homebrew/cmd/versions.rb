@@ -31,7 +31,7 @@ end
 class Formula
   def versions
     versions = []
-    rev_list.each do |sha|
+    rev_list do |sha|
       version = version_for_sha sha
       unless versions.include? version or version.nil?
         yield version, sha if block_given?
@@ -41,20 +41,17 @@ class Formula
     return versions
   end
 
-  def bottle_filenames branch='HEAD'
-    filenames = []
-    rev_list(branch).each do |sha|
-      filename = formula_for_sha(sha) do |f|
-        bottle_block = f.class.send(:bottle)
-        unless bottle_block.checksums.empty?
-          bottle_filename f, :revision => bottle_block.revision
+  def bottle_version_map branch='HEAD'
+    map = Hash.new { |h, k| h[k] = [] }
+    rev_list(branch) do |rev|
+      formula_for_sha(rev) do |f|
+        bottle = f.class.bottle
+        unless bottle.checksums.empty?
+          map[bottle.version] << bottle.revision
         end
       end
-      unless filenames.include? filename or filename.nil?
-        filenames << filename
-      end
     end
-    filenames
+    map
   end
 
   def pretty_relative_path
@@ -84,7 +81,9 @@ class Formula
 
     def rev_list branch='HEAD'
       repository.cd do
-        `git rev-list --abbrev-commit #{branch} -- #{entry_name}`.split
+        IO.popen("git rev-list --abbrev-commit --remove-empty #{branch} -- #{entry_name}") do |io|
+          yield io.readline.chomp until io.eof?
+        end
       end
     end
 
